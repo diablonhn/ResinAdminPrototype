@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+<meta charset="utf-8">
+<title>Sample app</title>
+</head>
+
+<body>
+
+<div>
+  <div>Url: <input id="url" type="text" size="70" value="http://127.0.0.1:8080/makaiService-1.0.0-SNAPSHOT/jamp"></div>
+  <div>Service name: <input id="serviceName" type="text" value="channel:///auth"></div>
+  <div>Method name: <input id="methodName" type="text" value="login"></div>
+  <div>Arguments (JSON): <input id="arguments" type="text" value='["foo", "bar"]'></div>
+  <button id="submitButton">Submit Query</button>
+</div>
+
+<script type="application/dart">
+import 'dart:async';
+import 'dart:html';
+import 'dart:json' as JSON;
+
+import 'jamp/jamp.dart' as Jamp;
+
+void main() {
+  try {
+    query("#submitButton").onClick.listen(submitQuery);
+  }
+  catch (e, stackTrace) {
+    print(e);
+    print(stackTrace);
+  }
+}
+
+String _url;
+Jamp.JampHttpChannel _channel;
+
+void submitQuery(Event event)
+{
+  print("submitQuery0-0");
+
+  String url = (query("#url") as InputElement).value;
+
+  String serviceName = (query("#serviceName") as InputElement).value;
+  String methodName = (query("#methodName") as InputElement).value;
+  String argJson = (query("#arguments") as InputElement).value;
+
+  List argList = new List();
+
+  if (argJson != null && argJson.length > 0) {
+    argList = JSON.parse(argJson) as List;
+  }
+
+  if (_channel == null || url != _url) {
+    print("submitQuery1: creating new channel123");
+
+    _channel = new Jamp.JampHttpChannel(url, pollStrategy : new Jamp.ConstantPollStrategy(const Duration(milliseconds : 500)));
+
+    _url = url;
+  }
+
+  Future<Jamp.ReplyMessage> future = _channel.submitQuery(serviceName, methodName, parameters : argList);
+
+  future.then((Jamp.ReplyMessage reply) {
+    print("submitQuery2: success $reply");
+  },
+  onError: ((Object obj) {
+    print("submitQuery3: error $obj");
+  }));
+}
+
+</script>
+
+<script type="application/javascript" src="packages/browser/dart.js"></script>
+
+</body>
+</html>

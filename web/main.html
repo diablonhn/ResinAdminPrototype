@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+<meta charset="utf-8">
+<title>Sample app</title>
+<link rel="stylesheet" href="css/main.css">
+<link rel="import" href="views/OverviewView.html">
+<link rel="import" href="views/HealthView.html">
+<link rel="import" href="views/JmxView.html">
+<link rel="import" href="views/LogView.html">
+<link rel="import" href="views/MemoryView.html">
+<link rel="import" href="views/MeterView.html">
+<link rel="import" href="views/PdfView.html">
+<link rel="import" href="views/PostMortemView.html">
+<link rel="import" href="views/ThreadView.html">
+<link rel="import" href="views/LoginView.html">
+<link rel="import" href="views/LoggedOutView.html">
+<link rel="import" href="views/ErrorView.html">
+
+<!--
+<meta http-equiv="refresh" content="0;URL=http://127.0.0.1:8080/ResinAdminPrototype/web/test.html">
+-->
+</head>
+
+<body>
+<h1>Resin Administration</h1>
+
+<div id="header">
+  <img src="images/caucho-white.jpg">
+</div>
+
+<div id="navigation">
+  <ul>
+    <li><a href="#view=overview" on-click="Env.getEnv().setViewByName('overview'); return false">Overview</a></li>
+    <li><a href="#view=health" on-click="Env.getEnv().setViewByName('health'); return false">Health</a></li>
+    <li><a href="#view=jmx" on-click="Env.getEnv().setViewByName('jmx'); return false">Jmx</a></li>
+    <li><a href="#view=log" on-click="Env.getEnv().setViewByName('log'); return false">Logs</a></li>
+    <li><a href="#view=memory" on-click="Env.getEnv().setViewByName('memory'); return false">Memory</a></li>
+    <li><a href="#view=meter" on-click="Env.getEnv().setViewByName('meter'); return false">Meters</a></li>
+    <li><a href="#view=pdf" on-click="Env.getEnv().setViewByName('pdf'); return false">PDF Report</a></li>
+    <li><a href="#view=post-mortem" on-click="Env.getEnv().setViewByName('post-mortem'); return false">Post-mortem Analysis</a></li>
+    <li><a href="#view=thread" on-click="Env.getEnv().setViewByName('thread'); return false">Thread</a></li>
+    <template if="! Env.getEnv().isLoggedIn">
+      <li><a href="#" on-click="Env.getEnv().setViewByName('login'); return false">Log in</a></li>
+    </template>
+    <template if="Env.getEnv().isLoggedIn">
+      <li><a href="#" on-click="Env.getEnv().loggedOut(); return false">Log out</a></li>
+    </template>
+  </ul>
+</div>
+
+<div id="view">
+  <!-- views call Env.addView(), which selects which view to display based
+       on the context -->
+  <overview-view hidden="true" data-default="true"></overview-view>
+  <log-view hidden="true"></log-view>
+  <health-view hidden="true"></health-view>
+  <jmx-view hidden="true"></jmx-view>
+  <memory-view hidden="true"></memory-view>
+  <meter-view hidden="true"></meter-view>
+  <pdf-view hidden="true"></pdf-view>
+  <post-mortem-view hidden="true"></post-mortem-view>
+  <thread-view hidden="true"></thread-view>
+  <login-view hidden="true"></login-view>
+  <logged-out-view hidden="true"></logged-out-view>
+  <error-view hidden="true" data-tail="true"></error-view>
+</div>
+
+<div id="footer">
+  <p>Copyright (c) 2013 Caucho Technology, Inc. All rights reserved.</p>
+</div>
+
+<script type="application/dart">
+import 'env.dart';
+
+void main() {
+  try {
+    String uri = "ws://localhost:8080/makaiService-1.0.0-SNAPSHOT/jamp";
+
+    Env env = Env.init(uri);
+  }
+  catch (e, stackTrace) {
+    print(e);
+    print(stackTrace);
+  }
+}
+</script>
+
+<script type="application/javascript" src="packages/browser/dart.js"></script>
+<script src="packages/browser/interop.js"></script>
+<script src="js/jquery.js"></script>
+<script src="js/jquery.flot.js"></script>
+<script src="js/jquery.flot.time.js"></script>
+
+</body>
+</html>

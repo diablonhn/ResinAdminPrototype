@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+</head>
+
+<body>
+<element name="memory-view" constructor="MemoryView" extends="div">
+
+<template>
+  <h3>MemoryView</h3>
+
+  <div>
+    <div id="memory-free" class="graph-container"></div>
+  </div>
+
+  <div>
+    <div id="memory-gc" class="graph-container"></div>
+  </div>
+
+  <h2>Memory Pools</h2>
+  <template if="memoryState != null">
+    <table>
+      <thead>
+        <tr>
+          <th>Pool</th>
+          <th>% free</th>
+          <th>Free</th>
+          <th>Used</th>
+          <th>Max</th>
+          <th>Committed</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>CodeCache</td>
+          <td>{{(memoryState.codeCacheFree / memoryState.codeCacheMax * 100).toStringAsFixed(2)}}%</td>
+          <td>{{(memoryState.codeCacheFree / (1024 * 1024)).toStringAsFixed(2)}}M</td>
+          <td>{{(memoryState.codeCacheUsed / (1024 * 1024)).toStringAsFixed(2)}}M</td>
+          <td>{{(memoryState.codeCacheMax / (1024 * 1024)).toStringAsFixed(2)}}M</td>
+          <td>{{(memoryState.codeCacheCommitted / (1024 * 1024)).toStringAsFixed(2)}}M</td>
+        </tr>
+        <tr>
+          <td>Eden</td>
+          <td>{{(memoryState.edenFree / memoryState.edenMax * 100).toStringAsFixed(2)}}%</td>
+          <td>{{(memoryState.edenFree / (1024 * 1024)).toStringAsFixed(2)}}M</td>
+          <td>{{(memoryState.edenUsed / (1024 * 1024)).toStringAsFixed(2)}}M</td>
+          <td>{{(memoryState.edenMax / (1024 * 1024)).toStringAsFixed(2)}}M</td>
+          <td>{{(memoryState.edenCommitted / (1024 * 1024)).toStringAsFixed(2)}}M</td>
+        </tr>
+        <tr>
+          <td>PermGen</td>
+          <td>{{(memoryState.permGenFree / memoryState.permGenMax * 100).toStringAsFixed(2)}}%</td>
+          <td>{{(memoryState.permGenFree / (1024 * 1024)).toStringAsFixed(2)}}M</td>
+          <td>{{(memoryState.permGenUsed / (1024 * 1024)).toStringAsFixed(2)}}M</td>
+          <td>{{(memoryState.permGenMax / (1024 * 1024)).toStringAsFixed(2)}}M</td>
+          <td>{{(memoryState.permGenCommitted / (1024 * 1024)).toStringAsFixed(2)}}M</td>
+        </tr>
+        <tr>
+          <td>Survivor</td>
+          <td>{{(memoryState.survivorFree / memoryState.survivorMax * 100).toStringAsFixed(2)}}%</td>
+          <td>{{(memoryState.survivorFree / (1024 * 1024)).toStringAsFixed(2)}}M</td>
+          <td>{{(memoryState.survivorUsed / (1024 * 1024)).toStringAsFixed(2)}}M</td>
+          <td>{{(memoryState.survivorMax / (1024 * 1024)).toStringAsFixed(2)}}M</td>
+          <td>{{(memoryState.survivorCommitted / (1024 * 1024)).toStringAsFixed(2)}}M</td>
+        </tr>
+        <tr>
+          <td>Tenured</td>
+          <td>{{(memoryState.tenuredFree / memoryState.tenuredMax * 100).toStringAsFixed(2)}}%</td>
+          <td>{{(memoryState.tenuredFree / (1024 * 1024)).toStringAsFixed(2)}}M</td>
+          <td>{{(memoryState.tenuredUsed / (1024 * 1024)).toStringAsFixed(2)}}M</td>
+          <td>{{(memoryState.tenuredMax / (1024 * 1024)).toStringAsFixed(2)}}M</td>
+          <td>{{(memoryState.tenuredCommitted / (1024 * 1024)).toStringAsFixed(2)}}M</td>
+        </tr>
+      </tbody>
+    </table>
+  </template>
+</template>
+
+<script type="application/dart">
+import 'package:web_ui/web_ui.dart';
+import "package:meta/meta.dart" show override;
+
+import 'dart:async';
+
+import 'View.dart';
+import '../env.dart';
+import '../Graph.dart';
+import '../ResinAdminService.dart';
+import '../ResinStatService.dart';
+
+class MemoryView extends View
+{
+  Graph freeMemoryGraph;
+  Graph gcTimeGraph;
+
+  GraphUpdateService updateService;
+
+  @observable
+  MemoryState memoryState;
+
+  @override
+  String getName() => "memory";
+
+  @override
+  void show()
+  {
+    super.show();
+
+    DateTime date = new DateTime.now().subtract(const Duration(minutes : 15));
+
+    this.updateService
+      = new GraphUpdateService(1000 * 60, date.millisecondsSinceEpoch);
+
+    this.freeMemoryGraph = new Graph("Memory Free", "memory-free",
+                                     cssClass : "medium-graph", legendColumns : 1);
+
+    Map statMap;
+
+    statMap = {"Heap Memory Free" : "00|JVM|Memory|Heap Memory Free",
+               "Tenured Memory Free" : "00|JVM|Memory|Tenured Memory Free",
+               "PermGen Memory Free" : "00|JVM|Memory|PermGen Memory Free"};
+
+    updateService.addGraph(this.freeMemoryGraph, statMap);
+
+    this.gcTimeGraph = new Graph("GC Time", "memory-gc",
+                                 cssClass : "medium-graph", legendColumns : 1);
+
+    statMap = {"PS MarkSweep" : "00|JVM|Memory|GC Time|PS MarkSweep",
+               "PS Scavenge" : "00|JVM|Memory|GC Time|PS Scavenge"};
+
+    updateService.addGraph(this.gcTimeGraph, statMap);
+    updateService.start();
+
+    Future<MemoryState> future
+      = Env.getEnv().getResinAdminService().getMemoryState();
+
+    future.then((MemoryState state) {
+      this.memoryState = state;
+    });
+  }
+
+  @override
+  void hide()
+  {
+    super.hide();
+
+    if (this.updateService != null) {
+      this.updateService.stop();
+    }
+
+    if (this.freeMemoryGraph != null) {
+      this.freeMemoryGraph.remove();
+      this.freeMemoryGraph = null;
+    }
+
+    if (this.gcTimeGraph != null) {
+      this.gcTimeGraph.remove();
+      this.gcTimeGraph = null;
+    }
+  }
+}
+</script>
+
+</element>
+</body></html>

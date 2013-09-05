@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+</head>
+
+<body>
+<element name="meter-view" constructor="MeterView" extends="div">
+
+<template>
+<h3>Meter View</h3>
+
+<div id="meter-container"></div>
+
+</template>
+
+<script type="application/dart">
+import "package:meta/meta.dart" show override;
+
+import 'dart:async';
+import 'dart:html';
+
+import 'View.dart';
+import '../env.dart';
+import '../ResinStatService.dart';
+import '../Graph.dart';
+
+class MeterView extends View
+{
+  GraphUpdateService updateService;
+
+  MeterView()
+  {
+  }
+
+  @override
+  String getName() => "meter";
+
+  @override
+  void show()
+  {
+    super.show();
+
+    Future<List<MeterGraphPage>> future
+      = Env.getEnv().getResinStatService().getMeterGraphPages();
+
+    future.then(updateMeterGraphs);
+  }
+
+  void updateMeterGraphs(List<MeterGraphPage> graphPages)
+  {
+    DivElement container = query("#meter-container") as DivElement;
+
+    Map<String,Graph> map = new Map();
+
+    DateTime date = new DateTime.now().subtract(const Duration(hours : 1));
+    GraphUpdateService updateService
+      = new GraphUpdateService(1000 * 60, date.millisecondsSinceEpoch);
+
+    this.updateService = updateService;
+
+    int pageCount = 0;
+
+    for (MeterGraphPage page in graphPages) {
+      createPage(page, container, pageCount++, updateService);
+    }
+
+    updateService.start();
+  }
+
+  void createPage(MeterGraphPage page, DivElement container, int count,
+                  GraphUpdateService updateService)
+  {
+    String pageName = page.name;
+
+    DivElement pageContainer = new DivElement();
+    pageContainer.id = "${container.id}-$count";
+
+    ParagraphElement paragraphElement = new ParagraphElement();
+    paragraphElement.innerHtml = pageName;
+    pageContainer.append(paragraphElement);
+
+    container.append(pageContainer);
+
+    int sectionCount = 0;
+
+    for (MeterGraphSection section in page.meterSections) {
+      createSection(section, pageContainer, sectionCount++, updateService);
+    }
+  }
+
+  void createSection(MeterGraphSection section,
+                     DivElement container, int count,
+                     GraphUpdateService updateService)
+  {
+    DivElement sectionContainer = new DivElement();
+    sectionContainer.id = "${container.id}-$count";
+
+    ParagraphElement paragraphElement = new ParagraphElement();
+    paragraphElement.innerHtml = section.name;
+    sectionContainer.append(paragraphElement);
+
+    container.append(sectionContainer);
+
+    int meterCount = 0;
+
+    for (MeterGraph meterGraph in section.meterGraphs) {
+      createGraph(meterGraph, sectionContainer, meterCount++, updateService);
+    }
+  }
+
+  void createGraph(MeterGraph meterGraph, DivElement container, int count,
+                   GraphUpdateService updateService)
+  {
+    String id = "${container.id}-$count";
+
+    DivElement graphContainer = new DivElement();
+    graphContainer.id = id;
+    graphContainer.classes.add("graph-container");
+
+    container.append(graphContainer);
+
+    Graph graph = new Graph(meterGraph.name, id);
+
+    Map<String,String> statMap = new Map();
+    for (String meterName in meterGraph.meterNames) {
+      meterName = "00|$meterName";
+
+      statMap[meterName] = meterName;
+    }
+
+    updateService.addGraph(graph, statMap);
+  }
+
+  @override
+  void hide()
+  {
+    super.hide();
+
+    this.updateService.stop();
+
+    DivElement container = query("#meter-container") as DivElement;
+    container.children.clear();
+  }
+}
+</script>
+</element>
+
+</body>
+</html>

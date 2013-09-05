@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+</head>
+
+<body>
+<element name="login-view" constructor="LoginView" extends="div">
+
+<template>
+<h3>LoginView</h3>
+
+<div>
+  <div><input id="user" type="text"></div>
+  <div><input id="pass" type="password"></div>
+  <div><button id="login-button">Login</button></div>
+</div>
+
+</template>
+
+<script type="application/dart">
+import 'package:meta/meta.dart' show override;
+
+import 'dart:async';
+import 'dart:html';
+
+import '../env.dart';
+import 'View.dart';
+
+class LoginView extends View
+{
+  LoginView()
+  {
+  }
+
+  @override
+  String getName() => "login";
+
+  @override
+  bool isLogin() => true;
+
+  @override
+  void inserted()
+  {
+    super.inserted();
+
+    Element e = query("#login-button");
+    e.onClick.listen(login);
+  }
+
+  void login(Event e)
+  {
+    print("LoginView.login0");
+
+    String user = (query("#user") as InputElement).value;
+    String pass = (query("#pass") as InputElement).value;
+
+    (query("#pass") as InputElement).value = "";
+
+    print("LoginView.login1: $user $pass");
+
+    Future<bool> future = Env.getEnv().getResinAuthService().login(user, pass);
+
+    future.then((bool isSuccessful) {
+      print("LoginView.login2: $isSuccessful");
+
+      if (isSuccessful) {
+        Env.getEnv().loggedIn();
+      }
+    });
+  }
+}
+</script>
+
+</element>
+</body></html>

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+</head>
+
+<body>
+<element name="pdf-view" constructor="PdfView" extends="div">
+
+<template>
+<h3>PdfView</h3>
+</template>
+
+<script type="application/dart">
+import "package:meta/meta.dart" show override;
+
+import 'View.dart';
+
+class PdfView extends View
+{
+  PdfView()
+  {
+  }
+
+  @override
+  String getName() => "pdf";
+}
+</script>
+
+</element>
+</body></html>

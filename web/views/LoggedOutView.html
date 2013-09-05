@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+</head>
+
+<body>
+<element name="logged-out-view" constructor="LoggedOutView" extends="div">
+
+<template>
+<h3>LoggedOutView</h3>
+
+<p>You have been logged out.</p>
+
+</template>
+
+<script type="application/dart">
+import 'package:meta/meta.dart' show override;
+
+import 'dart:async';
+import 'dart:html';
+
+import '../env.dart';
+import 'View.dart';
+
+class LoggedOutView extends View
+{
+  LoggedOutView()
+  {
+  }
+
+  @override
+  String getName() => "logged-out";
+
+  @override
+  bool isLoggedOut() => true;
+}
+</script>
+
+</element>
+</body></html>

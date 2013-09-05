@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+  <title>GraphWindow</title>
+</head>
+
+<body>
+<h2>GraphWindow</h2>
+
+<div id="canvas-test" style="width: 266px; height: 300px"></div>
+<div id="placeholder" style="width: 266px; height: 300px"></div>
+
+
+<script type="application/dart">
+
+import 'package:js/js.dart' as js;
+
+import 'dart:html';
+
+class Graph
+{
+  static int _idCount = 0;
+
+  String id;
+  int width;
+  int height;
+
+  CanvasElement canvas;
+
+  Graph({String id, int width, int height})
+  {
+    if (id != null) {
+      this.id = id;
+    }
+    else {
+      id = "Graph${_idCount++}";
+    }
+
+    this.canvas = new CanvasElement();
+    this.canvas.id = id;
+
+    if (width != null && height != null) {
+      this.canvas.width = width;
+      this.canvas.height = height;
+    }
+
+    init();
+  }
+
+  void init()
+  {
+    var jQuery = js.context.jQuery;
+
+    var data = new List();
+    data.add([1, 5]);
+    data.add([2, 10]);
+    data.add([3, 2]);
+    data.add([6, 1]);
+
+    jQuery.plot(query("#canvas-test"), js.array([data]));
+  }
+}
+
+class AxisFormatter
+{
+  List<num> getGridBoundaries(int numTicks, num boundMin, num boundMax)
+  {
+    return null;
+  }
+
+  String format(num value, num boundMin, num boundMax)
+  {
+    DateTime dateTime = new DateTime(value);
+
+    return null;
+  }
+}
+
+
+void main()
+{
+  DivElement div = query("#canvas-test") as DivElement;
+
+  Graph graph = new Graph();
+
+  div.append(graph.canvas);
+}
+
+</script>
+
+<!-- for this next line to work, your pubspec.yaml file must have a dependency on 'browser' -->
+<script src="packages/browser/dart.js"></script>
+<script src="packages/browser/interop.js"></script>
+
+<script src="../js/jquery.js"></script>
+<script src="../js/jquery.flot.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+  <link rel="import" href="x-checkbox-select.html">
+  <link rel="import" href="x-hour-drop-down.html">
+  <link rel="import" href="x-date-input.html">
+  <link rel="import" href="x-time-input.html">
+</head>
+
+<body>
+<element name="x-log-window" constructor="LogWindow" extends="div">
+
+<template>
+  <h3>LogWindow</h3>
+  <textarea id="log-console" rows="20" cols="80" wrap="off" placeholder="No log entries during this period."></textarea>
+
+  <table>
+    <tr>
+      <td>From:</td>
+      <td><x-date-input id="date-start"
+                        year="{{new DateTime.now().subtract(const Duration(hours : 1)).year}}"
+                        month="{{new DateTime.now().subtract(const Duration(hours : 1)).month}}"
+                        day="{{new DateTime.now().subtract(const Duration(hours : 1)).day}}"></x-date-input></td>
+      <td>Time: <x-time-input id="time-start" hour="{{new DateTime.now().subtract(const Duration(hours : 1)).hour}}"></x-time-input></td>
+    </tr>
+    <tr>
+      <td>To:</td>
+      <td><x-date-input id="date-end"></x-date-input></td>
+      <td>Time: <x-time-input id="time-end"></x-time-input></td>
+    </tr>
+  </table>
+
+  <p>Level:
+    <select id="level" template iterate="level in Level.getLevelList()">
+      <option value="{{level.name}}">{{level.name.toUpperCase()}}</option>
+    </select>
+  </p>
+
+  <p>Filter by name: <input id="filter" type="text" size="30" placeholder="e.g. com.caucho.server"></p>
+
+  <p>Selected servers: </p>
+  <x-checkbox-select option-map="{{getServerMap()}}"
+                     selected-list="{{getSelectedList()}}"
+                     submit-name="Update"
+                     listener="{{serversSelected}}">
+  </x-checkbox-select>
+</template>
+
+<script type="application/dart">
+import 'package:web_ui/web_ui.dart';
+import "package:meta/meta.dart" show override;
+
+import 'dart:async';
+import 'dart:html';
+
+import '../env.dart';
+import '../util.dart';
+import '../ResinAdminService.dart';
+import '../ResinLogService.dart';
+
+import 'x-component.dart';
+
+typedef void Listener(List<String> selectedList);
+
+class LogWindow extends Component
+{
+  @observable
+  List<String> serverList;
+
+  @observable
+  List<String> selectedList;
+
+  int lastUpdateTimeMs;
+
+  LogWindow()
+  {
+  }
+
+  @override
+  void inserted()
+  {
+    DateTime end = new DateTime.now();
+    DateTime start = end.subtract(const Duration(hours : 1));
+
+    getLogs(start, end);
+  }
+
+  void configChanged()
+  {
+    clearLogs();
+
+    DateInput inputDateStart = query('#date-start').xtag as DateInput;
+    TimeInput inputTimeStart = query('#time-start').xtag as TimeInput;
+
+    DateTime dateStart = new DateTime(inputDateStart.year,
+                                      inputDateStart.month,
+                                      inputDateStart.day,
+                                      inputTimeStart.hour,
+                                      inputTimeStart.minute);
+
+    DateInput inputDateEnd = query('#date-end').xtag as DateInput;
+    TimeInput inputTimeEnd = query('#time-end').xtag as TimeInput;
+
+    DateTime dateEnd = new DateTime(inputDateEnd.year,
+                                    inputDateEnd.month,
+                                    inputDateEnd.day,
+                                    inputTimeEnd.hour,
+                                    inputTimeEnd.minute,
+                                    59,
+                                    999);
+
+    Level level = new Level.fromName(getSelectedValue(query('#level') as SelectElement));
+    String filterName = (query('#filter') as InputElement).value;
+
+    getLogs(dateStart, dateEnd, level : level, filterName : filterName);
+  }
+
+  void getLogs(DateTime start, DateTime end, {Level level : Level.ALL, String filterName})
+  {
+    Future<ServerInfo> future
+      = Env.getEnv().getResinAdminService().getServerInfo();
+
+    future.then((ServerInfo info) {
+      selectedList = [info.serverId];
+
+      Future<List<LogMessage>> futureLog
+        = Env.getEnv().getResinLogService().getLog(info.serverId,
+                                                   level,
+                                                   start.millisecondsSinceEpoch,
+                                                   end.millisecondsSinceEpoch);
+
+      futureLog.then((List<LogMessage> list) {
+        appendLogs(list);
+      });
+    });
+
+    Future<List<String>> futureList
+      = Env.getEnv().getResinAdminService().getServers();
+
+    futureList.then((List<String> list) {
+      this.serverList = list;
+    });
+  }
+
+  void serversSelected(List<String> list)
+  {
+    print("LogWindow.serversSelected0: $list");
+
+    configChanged();
+  }
+
+  Map<String,String> getServerMap()
+  {
+    Map<String,String> map = new Map();
+
+    if (this.serverList != null) {
+      for (String id in this.serverList) {
+        map[id] = id;
+      }
+    }
+    else if (this.selectedList != null) {
+      for (String id in this.selectedList) {
+        map[id] = id;
+      }
+    }
+
+    return map;
+  }
+
+  List<String> getSelectedList()
+  {
+    if (this.selectedList != null) {
+      return this.selectedList;
+    }
+    else {
+      return [];
+    }
+  }
+
+  void appendLogs(List<LogMessage> list)
+  {
+    TextAreaElement element = query("#log-console") as TextAreaElement;
+
+    for (LogMessage msg in list) {
+      DateTime date = new DateTime.fromMillisecondsSinceEpoch(msg.timestampMs, isUtc: false);
+
+      String level = msg.level.name.toUpperCase();
+      String source = msg.name;
+
+      int p = source.lastIndexOf(".");
+
+      if (p >= 0) {
+        source = source.substring(p + 1);
+      }
+
+      element.innerHtml += "[$date] $level $source: ${msg.message} \n";
+
+      element.scrollTop = element.scrollHeight;
+    }
+  }
+
+  void clearLogs()
+  {
+    TextAreaElement element = query("#log-console") as TextAreaElement;
+
+    element.innerHtml = "";
+  }
+}
+</script>
+
+</element>
+</body>
+</html>

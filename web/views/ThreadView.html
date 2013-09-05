@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+</head>
+
+<body>
+<element name="thread-view" constructor="ThreadView" extends="div">
+
+<template>
+  <h3>ThreadView</h3>
+
+  <template if="threadingInfo != null">
+    <div>
+      <h2>Summary</h2>
+      <table>
+        <tr>
+          <th colspan="3">Resin Threads</th>
+          <th colspan="6">JVM Threads</th>
+        </tr>
+        <tr>
+          <th>Active</th>
+          <th>Idle</th>
+          <th>Total</th>
+          <th>Runnable</th>
+          <th>Native</th>
+          <th>Blocked</th>
+          <th>Waiting</th>
+          <th>Total</th>
+          <th>Peak</th>
+        </tr>
+        <tr>
+          <td>{{threadingInfo.activeResinThreads}}</td>
+          <td>{{threadingInfo.idleResinThreads}}</td>
+          <td>{{threadingInfo.totalResinThreads}}</td>
+          <td>{{threadingInfo.runnableJvmThreads}}</td>
+          <td>{{threadingInfo.nativeJvmThreads}}</td>
+          <td>{{threadingInfo.blockedJvmThreads}}</td>
+          <td>{{threadingInfo.waitingJvmThreads}}</td>
+          <td>{{threadingInfo.totalJvmThreads}}</td>
+          <td>{{threadingInfo.peakJvmThreads}}</td>
+        </tr>
+      </table>
+    </div>
+  </template>
+
+  <div id="thread-resin-graph" class="graph-container"></div>
+  <div id="thread-jvm-graph" class="graph-container"></div>
+
+  <template if="threadScoreboard != null">
+    <div>
+      <h2>Thread Scoreboards</h2>
+
+      <template iterate="key in threadScoreboard.scoreboardMap.keys">
+        <div>
+          <div>{{key}}</div>
+          <div>{{threadScoreboard.scoreboardMap[key]}}</div>
+        </div>
+      </template>
+
+      <div>
+        <table>
+          <tbody template iterate="key in threadScoreboard.keyMap.keys">
+            <tr>
+              <td>{{key}}</td>
+              <td>{{threadScoreboard.keyMap[key]}}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </template>
+
+  <template if="threadDumpMap != null">
+    <div>
+
+      <template iterate="key in threadDumpMap.keys">
+        <div>
+          <h2>{{key}}</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Id</th>
+                <th>Name</th>
+                <th>State</th>
+                <th>Method</th>
+                <th>Request URL</th>
+              </tr>
+            </thead>
+            <tbody template iterate="threadDump in threadDumpMap[key]">
+              <tr>
+                <td>{{threadDump.id}}</td>
+                <td>{{threadDump.name}}</td>
+                <td>{{threadDump.state}}</td>
+                <td>{{threadDump.appClassName != null ? "${threadDump.appClassName}.${threadDump.appMethodName}()": ""}}
+                  <div>
+                    <pre template if="threadDump.appClassName != null">{{threadDump.stackTrace}}</pre>
+                  </div>
+                </td>
+                <td>{{threadDump.url != null ? threadDump.url : ""}}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </template>
+
+    </div>
+  </template>
+
+</template>
+
+<script type="application/dart">
+import 'package:web_ui/web_ui.dart';
+import 'package:web_ui/watcher.dart';
+import "package:meta/meta.dart" show override;
+
+import 'dart:async';
+import 'dart:html';
+
+import 'View.dart';
+import '../env.dart';
+import '../Graph.dart';
+import '../ResinAdminService.dart';
+
+class ThreadView extends View
+{
+  GraphUpdateService updateService;
+
+  Graph resinThreadGraph;
+  Graph jvmThreadGraph;
+
+  @observable
+  ThreadingInfo threadingInfo;
+
+  @observable
+  ThreadScoreboard threadScoreboard;
+
+  @observable
+  List<ThreadDump> threadDumpList;
+
+  @observable
+  Map<String,List<ThreadDump>> threadDumpMap;
+
+  @override
+  String getName() => "thread";
+
+  @override
+  void show()
+  {
+    super.show();
+
+    Future<ThreadingInfo> future
+      = Env.getEnv().getResinAdminService().getThreadingInfo();
+
+    future.then((ThreadingInfo info) {
+      this.threadingInfo = info;
+    });
+
+    DateTime date = new DateTime.now().subtract(const Duration(hours : 1));
+
+    GraphUpdateService updateService
+      = new GraphUpdateService(1000 * 60, date.millisecondsSinceEpoch);
+
+    this.updateService = updateService;
+
+    Map statMap;
+
+    this.resinThreadGraph = new Graph("Resin Threads", "thread-resin-graph");
+
+    statMap = {"JVM Thread Count" : "00|JVM|Thread|JVM Thread Count",
+               "Thread Count" : "00|Resin|Thread|Thread Count",
+               "Thread Active Count" : "00|Resin|Thread|Thread Active Count",
+               "Thread Idle Count" : "00|Resin|Thread|Thread Idle Count",
+               "Thread Task Queue" : "00|Resin|Thread|Thread Task Queue",
+               "Thread Priority Queue" : "00|Resin|Thread|Thread Priority Queue",
+               "Thread Overflow Count" : "00|Resin|Thread|Thread Overflow Count"};
+
+    updateService.addGraph(this.resinThreadGraph, statMap);
+
+    this.jvmThreadGraph = new Graph("JVM Threads", "thread-jvm-graph");
+
+    statMap = {"JVM Thread Count" : "00|JVM|Thread|JVM Thread Count",
+               "JVM Runnable Count" : "00|JVM|Thread|JVM Runnable Count",
+               "JVM Blocked Count" : "00|JVM|Thread|JVM Blocked Count",
+               "JVM Native Count" : "00|JVM|Thread|JVM Native Count",
+               "JVM Waiting Count" : "00|JVM|Thread|JVM Waiting Count"};
+
+    updateService.addGraph(this.jvmThreadGraph, statMap);
+    updateService.start();
+
+    Future<ThreadScoreboard> futureBoard
+      = Env.getEnv().getResinAdminService().getThreadScoreboard();
+
+    futureBoard.then((ThreadScoreboard board) {
+      this.threadScoreboard = board;
+    });
+
+    Future<List<ThreadDump>> futureDump
+      = Env.getEnv().getResinAdminService().getThreadDumps();
+
+    futureDump.then((List<ThreadDump> list) {
+      list.sort();
+
+      this.threadDumpList = list;
+
+      this.threadDumpMap = new Map();
+
+      for (ThreadDump dump in list) {
+        if (dump.isIdlePoolThread) {
+          addThreadDumpToList(this.threadDumpMap, "idle", dump);
+        }
+        else if (dump.isNative) {
+          addThreadDumpToList(this.threadDumpMap, "jni", dump);
+        }
+        else if (dump.state == "WAITING" || dump.state == "TIMED_WAITING") {
+          addThreadDumpToList(this.threadDumpMap, "wait", dump);
+        }
+        else {
+          addThreadDumpToList(this.threadDumpMap, "misc", dump);
+        }
+      }
+    });
+  }
+
+  @override
+  void hide()
+  {
+    super.hide();
+
+    this.updateService.stop();
+
+    this.resinThreadGraph.remove();
+    this.jvmThreadGraph.remove();
+  }
+
+  void addThreadDumpToList(Map<String,List<ThreadDump>> map, String key, ThreadDump dump)
+  {
+    List<ThreadDump> list = map[key];
+
+    if (list == null) {
+      list = new List();
+
+      map[key] = list;
+    }
+
+    list.add(dump);
+  }
+}
+</script>
+
+</element>
+</body></html>

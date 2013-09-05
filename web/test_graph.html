@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <title>test</title>
+  </head>
+
+<body>
+<div id="test" style="width: 266px; height: 240px"></div>
+<div id="legend"></div>
+    <p id="text"></p>
+    <script type="application/javascript" src="packages/browser/dart.js"></script>
+    <script src="packages/browser/interop.js"></script>
+    <script src="js/jquery.js"></script>
+    <script src="js/jquery.flot.js"></script>
+    <script src="js/jquery.flot.time.js"></script>
+<script type="text/javascript">
+
+var thumb_graphs = new Array();
+
+values = [
+[1376463861000, 51923904],
+[1376463921000, 51921920],
+[1376464161000, 51921920],
+[1376464221000, 51921592],
+[1376464281000, 51920968],
+[1376464401000, 51920968],
+[1376464461000, 51920904],
+[1376464941000, 51920904],
+[1376465001000, 51919304],
+[1376465901000, 51919304],
+[1376465961000, 51918488],
+[1376466081000, 51918488],
+[1376466141000, 51918456],
+[1376466201000, 51918456],
+[1376466261000, 51917632],
+[1376466921000, 51917632],
+[1376466981000, 51913288],
+[1376467461000, 51913288]
+];
+thumb_graphs[0] = { label : '00|JVM|Memory|PermGen&nbsp;Memory&nbsp;Free', data : values, color: "#906000", lines: { lineWidth: 2 } };
+thumb_graphs[1] = { label : '00|JVM|Memory|PermGen&nbsp;Memory&nbsp;Free2', data : values, color: "#906000", lines: { lineWidth: 2 } };
+
+
+var x_min_ms = 1376463861000;
+var x_max_ms = 1376467461000;
+
+function tickFormatter(val, axis) {
+  if (val >= 1e9)
+    return (val / 1e9).toFixed(1) + 'G';
+  if (val >= 1e6)
+    return (val / 1e6).toFixed(1) + 'M';
+  if (val >= 1e3)
+    return (val / 1e3).toFixed(1) + 'k';
+  return val.toFixed(axis.tickDecimals);
+}
+
+var thumb_options = {
+  xaxis: { mode:"time", min: x_min_ms, max: x_max_ms },
+  yaxis: {
+    tickFormatter: tickFormatter
+  },
+  legend : {
+    container: "#legend"
+  }
+};
+
+var thumb_plot = $.plot("#test", thumb_graphs, thumb_options);
+</script>
+
+  </body>
+</html>

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+
+<html><body>
+<element name="overview-view" constructor="OverviewView" extends="div">
+
+<template>
+  <h3>OverviewView</h3>
+  <template if="serverInfo != null">
+    <div>
+      <table border="1">
+        <tr>
+          <td>Server:</td>
+          <td>
+            <select template iterate="serverId in serverList" id="serverIdSelect" on-change="onServerChange()">
+              <option value="{{serverId}}">{{serverId}}</option>
+            </select>
+          </td>
+        </tr>
+        <tr>
+          <td>State:</td><td>{{serverInfo.state}}</td>
+        </tr>
+        <tr template if="healthStatus != null && healthStatus.serverId == serverInfo.serverId">
+          <td>Health Status</td><td>{{healthStatus.message}}: {{healthStatus.status}}</td>
+        </tr>
+        <tr>
+          <td>User:</td><td>{{serverInfo.user}}</td>
+        </tr>
+        <tr>
+          <td>Machine:</td><td>{{serverInfo.machine}}</td>
+        </tr>
+        <tr>
+          <td>Resin:</td><td>{{serverInfo.resinVersion}}</td>
+        </tr>
+        <tr>
+          <td>JDK:</td><td>{{serverInfo.jdkVersion}}</td>
+        </tr>
+        <tr>
+          <td>OS:</td><td>{{serverInfo.osVersion}}</td>
+        </tr>
+        <tr>
+          <td>Message:</td><td>{{serverInfo.watchdogMessage}}</td>
+        </tr>
+        <tr>
+          <td>License:</td><td>{{serverInfo.license}}</td>
+        </tr>
+        <tr>
+          <td>Heap:</td><td>{{(serverInfo.freeHeap / (1024 * 1024)).toStringAsFixed(2)}}M / {{(serverInfo.totalHeap / (1024 * 1024)).toStringAsFixed(2)}}M</td>
+        </tr>
+        <tr>
+          <td>Physical:</td><td>{{(serverInfo.freePhysical / (1024 * 1024)).toStringAsFixed(2)}}M / {{(serverInfo.totalPhysical / (1024 * 1024)).toStringAsFixed(2)}}M</td>
+        </tr>
+        <tr>
+          <td>Swap:</td><td>{{(serverInfo.freeSwap / (1024 * 1024)).toStringAsFixed(2)}}M / {{(serverInfo.totalSwap / (1024 * 1024)).toStringAsFixed(2)}}M</td>
+        </tr>
+        <tr>
+          <td>File descriptors:</td><td>{{serverInfo.fileDescriptors}} / {{serverInfo.maxFileDescriptors}}</td>
+        </tr>
+      </table>
+    </div>
+  </template>
+</template>
+
+<script type="application/dart">
+import 'package:web_ui/web_ui.dart';
+import "package:meta/meta.dart" show override;
+
+import 'dart:async';
+import 'dart:html';
+
+import 'View.dart';
+import '../env.dart';
+import '../ResinAdminService.dart';
+
+class OverviewView extends View
+{
+  @observable
+  ServerInfo serverInfo;
+
+  @observable
+  List<String> serverList;
+
+  @observable
+  HealthStatus healthStatus;
+
+  SummaryView()
+  {
+  }
+
+  @override
+  String getName() => "overview";
+
+  @override
+  void show()
+  {
+    super.show();
+
+    this.serverInfo = null;
+    this.serverList = null;
+    this.healthStatus = null;
+
+    updateServerInfo();
+  }
+
+  void updateServerInfo([String serverId])
+  {
+    Env env = Env.getEnv();
+
+    Future<ServerInfo> future
+      = env.getResinAdminService().getServerInfo(serverId);
+
+    future.then((ServerInfo info) {
+      this.serverInfo = info;
+
+      this.serverList = [info.serverId];
+
+      Future<HealthStatus> futureHealth
+        = env.getResinAdminService().getHealthStatus(serverId);
+
+      futureHealth.then((HealthStatus status) {
+        if (this.serverInfo == info) {
+          this.healthStatus = status;
+        }
+      });
+
+      Future<List<String>> futureList
+        = Env.getEnv().getResinAdminService().getServers();
+
+      futureList.then((List<String> list) {
+        this.serverList = list;
+      });
+    });
+  }
+
+  void onServerChange()
+  {
+    SelectElement select = query("#serverIdSelect");
+
+    String serverId = select.value;
+
+    updateServerInfo(serverId);
+  }
+}
+</script>
+
+</element></body>
+</html>

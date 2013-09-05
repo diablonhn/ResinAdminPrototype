@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+</head>
+
+<body>
+<element name="x-date-input" constructor="DateInput" extends="span">
+
+<template>
+  <select name="year" on-change="updateYear($event)"></select>
+  <select name="month" on-change="updateMonth($event)">
+    <option value="1">Jan</option>
+    <option value="2">Feb</option>
+    <option value="3">Mar</option>
+    <option value="4">Apr</option>
+    <option value="5">May</option>
+    <option value="6">Jun</option>
+    <option value="7">Jul</option>
+    <option value="8">Aug</option>
+    <option value="9">Sep</option>
+    <option value="10">Oct</option>
+    <option value="11">Nov</option>
+    <option value="12">Dev</option>
+  </select>
+  <select name="day" on-change="updateDay($event)">
+    <option value="1">1</option>
+    <option value="2">2</option>
+    <option value="3">3</option>
+    <option value="4">4</option>
+    <option value="5">5</option>
+    <option value="6">6</option>
+    <option value="7">7</option>
+    <option value="8">8</option>
+    <option value="9">9</option>
+    <option value="10">10</option>
+    <option value="11">11</option>
+    <option value="12">12</option>
+    <option value="13">13</option>
+    <option value="14">14</option>
+    <option value="15">15</option>
+    <option value="16">16</option>
+    <option value="17">17</option>
+    <option value="18">18</option>
+    <option value="19">19</option>
+    <option value="20">20</option>
+    <option value="21">21</option>
+    <option value="22">22</option>
+    <option value="23">23</option>
+    <option value="24">24</option>
+    <option value="25">25</option>
+    <option value="26">26</option>
+    <option value="27">27</option>
+    <option value="28">28</option>
+    <option value="29">29</option>
+    <option value="30">30</option>
+    <option value="31">31</option>
+  </select>
+</template>
+
+<script type="application/dart">
+import "package:meta/meta.dart" show override;
+
+import 'dart:html';
+
+import 'x-component.dart';
+
+class DateInput extends Component
+{
+  int yearMin;
+  int yearMax;
+
+  int year;
+  int month;
+  int day;
+
+  DateInput()
+  {
+    DateTime date = new DateTime.now();
+
+    this.year = date.year;
+    this.month = date.month;
+    this.day = date.day;
+
+    this.yearMin = year - 1;
+    this.yearMax = year;
+  }
+
+  void updateYear(Event e)
+  {
+    SelectElement select = e.path[0] as SelectElement;
+    String value = select.selectedOptions[0].value;
+
+    this.year = int.parse(value);
+  }
+
+  void updateMonth(Event e)
+  {
+    SelectElement select = e.path[0] as SelectElement;
+    String value = select.selectedOptions[0].value;
+
+    this.month = int.parse(value);
+  }
+
+  void updateDay(Event e)
+  {
+    SelectElement select = e.path[0] as SelectElement;
+    String value = select.selectedOptions[0].value;
+
+    this.day = int.parse(value);
+  }
+
+  @override
+  void inserted()
+  {
+    SelectElement selectYear = query('#${this.id} [name="year"]') as SelectElement;
+
+    for (int i = this.yearMax; i >= this.yearMin; i--) {
+      OptionElement option = new OptionElement(i.toString(), i.toString());
+
+      if (i == this.year) {
+        option.selected = true;
+      }
+
+      selectYear.children.add(option);
+    }
+
+    SelectElement selectMonth = query('#${this.id} [name="month"]') as SelectElement;
+
+    for (Element element in selectMonth.children) {
+      OptionElement option = element as OptionElement;
+
+      int value = int.parse(option.value);
+
+      if (value == this.month) {
+        option.selected = true;
+
+        break;
+      }
+    }
+
+    SelectElement selectDay = query('#${this.id} [name="day"]') as SelectElement;
+
+    for (Element element in selectDay.children) {
+      OptionElement option = element as OptionElement;
+
+      int value = int.parse(option.value);
+
+      if (value == this.day) {
+        option.selected = true;
+
+        break;
+      }
+    }
+  }
+
+  @override
+  String toString()
+  {
+    return "DateInput[$year-$month-$day]";
+  }
+}
+</script>
+
+</element>
+</body>
+</html>

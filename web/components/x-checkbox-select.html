@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+</head>
+
+<body>
+<element name="x-checkbox-select" constructor="CheckboxSelect" extends="div">
+
+<template>
+  <template if="isReady()">
+    <template if="optionMap.keys.length > 0">
+      <ul>
+        <template iterate="key in optionMap.keys">
+          <li>
+            <template if="selectedList.contains(key)">
+              <input type="checkbox" value="{{key}}" checked on-change="update($event)">{{optionMap[key]}}
+            </template>
+
+            <template if="! selectedList.contains(key)">
+              <input type="checkbox" value="{{key}}" on-change="update($event)">{{optionMap[key]}}
+            </template>
+          </li>
+        </template>
+      </ul>
+
+      <button on-click="submit()">{{submitName}}</button>
+    </template>
+  </template>
+
+</template>
+
+<script type="application/dart">
+import 'package:web_ui/web_ui.dart';
+
+import 'dart:html';
+
+import 'x-component.dart';
+
+typedef void Listener(List<String> selectedList);
+
+class CheckboxSelect extends Component
+{
+  Listener listener;
+
+  @observable
+  String submitName = "Submit";
+
+  @observable
+  Map<String,String> optionMap;
+
+  @observable
+  List<String> selectedList;
+
+  CheckboxSelect()
+  {
+    this.selectedList = new List();
+  }
+
+  void update(Event e)
+  {
+    InputElement input = e.path[0];
+
+    String value = input.value;
+    bool isChecked = input.checked;
+
+    if (this.selectedList.contains(value)) {
+      if (isChecked) {
+      }
+      else {
+        this.selectedList.remove(value);
+      }
+    }
+    else if (isChecked) {
+      this.selectedList.add(value);
+    }
+  }
+
+  void submit()
+  {
+    if (this.listener != null) {
+      this.listener(this.selectedList);
+    }
+  }
+}
+</script>
+
+</element>
+</body>
+</html>

@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+</head>
+
+<body>
+<element name="jmx-view" constructor="JmxView" extends="div">
+
+<template>
+  <h3>JmxView</h3>
+
+  <div>
+    <ul>
+      <li template if="jvmMbeanMap != null && jvmMbeanMap.length > 0"><a href="#jmx-jvm">JVM</a></li>
+      <li template if="resinMbeanMap != null && resinMbeanMap.length > 0"><a href="#jmx-resin">Resin</a></li>
+      <li template if="appMbeanMap != null && appMbeanMap.length > 0"><a href="#jmx-app">App</a></li>
+    </ul>
+  </div>
+
+  <template if="jvmMbeanMap != null && jvmMbeanMap.length > 0">
+    <div id="jmx-jvm">
+      <h3>JVM</h3>
+      <template iterate="prefix in jvmMbeanMap.keys">
+        <template iterate="type in jvmMbeanMap[prefix].keys">
+          <template iterate="mbean in jvmMbeanMap[prefix][type]">
+
+            <div>
+              <h4>{{mbean.type}}</h4>
+              <table>
+                <tbody template iterate="key in mbean.valueMap.keys">
+                  <tr>
+                  <th>{{key}}</th>
+                  <td>{{mbean.valueMap[key]}}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+          </template>
+        </template>
+      </template>
+    </div>
+  </template>
+
+  <template if="resinMbeanMap != null && resinMbeanMap.length > 0">
+    <div id="jmx-resin">
+      <h3>Resin</h3>
+      <template iterate="prefix in resinMbeanMap.keys">
+        <template iterate="type in resinMbeanMap[prefix].keys">
+          <template iterate="mbean in resinMbeanMap[prefix][type]">
+
+            <div>
+              <h4>{{mbean.type}}</h4>
+              <table>
+                <tbody template iterate="key in mbean.valueMap.keys">
+                  <tr>
+                  <th>{{key}}</th>
+                  <td>{{mbean.valueMap[key]}}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+          </template>
+        </template>
+      </template>
+    </div>
+  </template>
+
+  <template if="appMbeanMap != null && appMbeanMap.length > 0">
+    <div id="jmx-app">
+      <h3>App</h3>
+      <template iterate="prefix in appMbeanMap.keys">
+        <template iterate="type in appMbeanMap[prefix].keys">
+          <template iterate="mbean in appMbeanMap[prefix][type]">
+
+            <div>
+              <h4>{{mbean.type}}</h4>
+              <table>
+                <tbody template iterate="key in mbean.valueMap.keys">
+                  <tr>
+                  <th>{{key}}</th>
+                  <td>{{mbean.valueMap[key]}}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+          </template>
+        </template>
+      </template>
+    </div>
+  </template>
+
+</template>
+
+<script type="application/dart">
+import 'package:web_ui/web_ui.dart';
+import 'package:web_ui/watcher.dart';
+import "package:meta/meta.dart" show override;
+
+import 'dart:async';
+import 'dart:collection';
+import 'dart:html';
+
+import 'View.dart';
+import '../env.dart';
+import '../ResinAdminService.dart';
+
+class JmxView extends View
+{
+  @observable
+  Map<String,Map<String,List<MBean>>> jvmMbeanMap;
+
+  @observable
+  Map<String,Map<String,List<MBean>>> resinMbeanMap;
+
+  @observable
+  Map<String,Map<String,List<MBean>>> appMbeanMap;
+
+  @override
+  String getName() => "jmx";
+
+  @override
+  void show()
+  {
+    super.show();
+
+    Future<List<MBean>> future
+      = Env.getEnv().getResinAdminService().jmxQuery("*:*");
+
+    future.then((List<MBean> list) {
+      this.jvmMbeanMap = new LinkedHashMap();
+      this.resinMbeanMap = new LinkedHashMap();
+      this.appMbeanMap = new LinkedHashMap();
+
+      list.sort();
+
+      for (MBean mbean in list) {
+        int p = mbean.name.indexOf(":");
+        String prefix = mbean.name.substring(0, p);
+
+        if (prefix.startsWith("java")
+            || prefix.startsWith("com.sun")) {
+          addMbeanToMap(mbean, prefix, this.jvmMbeanMap);
+        }
+        else if (prefix.startsWith("resin")) {
+          addMbeanToMap(mbean, prefix, this.resinMbeanMap);
+        }
+        else {
+          addMbeanToMap(mbean, prefix, this.appMbeanMap);
+        }
+      }
+    });
+  }
+
+  void addMbeanToMap(MBean mbean, String prefix, Map map)
+  {
+    Map<String,List<MBean>> typeMap = map[prefix];
+
+    if (typeMap == null) {
+      typeMap = new LinkedHashMap();
+
+      map[prefix] = typeMap;
+    }
+
+    List<MBean> mbeanList = typeMap[mbean.type];
+
+    if (mbeanList == null) {
+      mbeanList = new List();
+
+      typeMap[mbean.type] = mbeanList;
+    }
+
+    mbeanList.add(mbean);
+  }
+
+
+}
+</script>
+
+</element>
+</body></html>

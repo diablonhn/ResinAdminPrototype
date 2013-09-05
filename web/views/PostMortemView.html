@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+</head>
+
+<body>
+<element name="post-mortem-view" constructor="PostMortemView" extends="div">
+
+<template>
+<h3>PostMortemView</h3>
+</template>
+
+<script type="application/dart">
+import "package:meta/meta.dart" show override;
+
+import 'dart:async';
+
+import 'View.dart';
+import '../env.dart';
+import '../ResinAdminService.dart';
+import '../ResinStatService.dart';
+
+class PostMortemView extends View
+{
+  List<int> startTimeList;
+
+  PostMortemView()
+  {
+  }
+
+  @override
+  String getName() => "post-mortem";
+
+  @override
+  void show()
+  {
+    super.show();
+
+    DateTime now = new DateTime.now();
+    DateTime start = now.subtract(const Duration(days : 7));
+
+    Future<List<int>> future
+      = Env.getEnv().getResinStatService().getStartTimes(null,
+                                                         start.millisecondsSinceEpoch,
+                                                         now.millisecondsSinceEpoch);
+
+    future.then((List<int> list) {
+      this.startTimeList = list;
+
+      if (list.length == 0) {
+        return;
+      }
+
+      int time = list.last;
+
+
+    });
+  }
+}
+
+String formatTimestamp(int timestamp)
+{
+  DateTime date = new DateTime.fromMillisecondsSinceEpoch(timestamp);
+
+  return formatDateTime(date);
+}
+
+String formatDateTime(DateTime date)
+{
+  String month = pad(date.month.toString(), 2, "0");
+  String day = pad(date.day.toString(), 2, "0");
+  String hour = pad(date.hour.toString(), 2, "0");
+  String minute = pad(date.minute.toString(), 2, "0");
+  String second = pad(date.second.toString(), 2, "0");
+
+  return "${date.year}-$month-$day $hour:$minute:$second";
+}
+
+String formatElapsedTime(int diffMs)
+{
+  int totalSeconds = (diffMs / 1000).round();
+
+  if (totalSeconds == 0) {
+    return "0 seconds";
+  }
+
+  int remainder;
+
+  int days = totalSeconds ~/ (60 * 60 * 24);
+  remainder = totalSeconds % (60 * 60 * 24);
+
+  int hours = remainder ~/ (60 * 60);
+  remainder = remainder % (60 * 60);
+
+  int minutes = remainder ~/ 60;
+  int seconds = remainder % 60;
+
+  StringBuffer sb = new StringBuffer();
+
+  if (days == 1) {
+    sb.write("$days day ");
+  }
+  else if (days > 1) {
+    sb.write("$days days ");
+  }
+
+  if (hours == 1) {
+    sb.write("$hours hour ");
+  }
+  else if (hours > 1) {
+    sb.write("$hours hours ");
+  }
+
+  if (minutes == 1) {
+    sb.write("$minutes minute ");
+  }
+  else if (days > 1) {
+    sb.write("$minutes minutes ");
+  }
+
+  if (seconds == 1) {
+    sb.write("$seconds second ");
+  }
+  else if (seconds > 1) {
+    sb.write("$seconds seconds ");
+  }
+
+  return sb.toString();
+}
+
+String pad(String s, int length, String padChar)
+{
+  while (s.length < length) {
+    s = padChar + s;
+  }
+
+  return s;
+}
+</script>
+
+</element>
+</body></html>
