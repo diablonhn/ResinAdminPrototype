@@ -4,7 +4,7 @@ abstract class Message
 {
   static final Map<String,String> EMPTY_MAP = new Map();
 
-  Map<String,String> headerMap;
+  Map<String,String> _headerMap;
 
   Message(Map<String,String> headerMap)
   {
@@ -12,7 +12,7 @@ abstract class Message
       headerMap = EMPTY_MAP;
     }
 
-    this.headerMap = headerMap;
+    _headerMap = headerMap;
   }
 
   String serialize()
@@ -21,7 +21,7 @@ abstract class Message
 
     serializeImpl(list);
 
-    String json = JSON.stringify(list);
+    String json = JSON.encode(list);
 
     return json;
   }
@@ -37,34 +37,35 @@ abstract class Message
 
 class SendMessage extends Message
 {
-  String toAddress;
-  String methodName;
+  String _toAddress;
+  String _methodName;
 
-  List parameters;
+  List _args;
 
   SendMessage(Map<String,String> headerMap,
               String toAddress,
               String methodName,
-              [List parameters])
+              [List args])
               : super(headerMap)
   {
-    this.methodName = methodName;
+    _toAddress = toAddress;
+    _methodName = methodName;
 
-    this.parameters = parameters;
+    _args = args;
   }
 
   @override
   void serializeImpl(List list)
   {
     list.add("send");
-    list.add(this.headerMap);
-    list.add(this.toAddress);
-    list.add(this.methodName);
+    list.add(_headerMap);
+    list.add(_toAddress);
+    list.add(_methodName);
 
-    List parameters = this.parameters;
+    List args = _args;
 
-    if (parameters != null && parameters.length > 0) {
-      for (var p in parameters) {
+    if (args != null && args.length > 0) {
+      for (var p in args) {
         list.add(p);
       }
     }
@@ -73,58 +74,96 @@ class SendMessage extends Message
 
 class QueryMessage extends Message
 {
-  String fromAddress;
-  int queryId;
+  String _fromAddress;
+  int _queryId;
 
-  String toAddress;
-  String methodName;
+  String _toAddress;
+  String _methodName;
 
-  List parameters;
+  List _args;
 
   QueryMessage(Map<String,String> headerMap,
                String fromAddress,
                int queryId,
                String toAddress,
                String methodName,
-               [List parameters])
+               [List args])
                : super(headerMap)
   {
-    this.fromAddress = fromAddress;
-    this.queryId = queryId;
+    _fromAddress = fromAddress;
+    _queryId = queryId;
 
-    this.toAddress = toAddress;
-    this.methodName = methodName;
+    _toAddress = toAddress;
+    _methodName = methodName;
 
-    this.parameters = parameters;
+    _args = args;
   }
 
   @override
   void serializeImpl(List list)
   {
     list.add("query");
-    list.add(this.headerMap);
-    list.add(this.fromAddress);
-    list.add(this.queryId);
-    list.add(this.toAddress);
-    list.add(this.methodName);
+    list.add(_headerMap);
+    list.add(_fromAddress);
+    list.add(_queryId);
+    list.add(_toAddress);
+    list.add(_methodName);
 
-    List parameters = this.parameters;
+    List args = _args;
 
-    if (parameters != null && parameters.length > 0) {
-      for (var p in parameters) {
+    if (args != null && args.length > 0) {
+      for (var p in args) {
         list.add(p);
       }
     }
   }
 }
 
+class SubscribeMessage extends QueryMessage
+{
+  String _serviceName;
+  String _myCallbackAddress;
+
+  SubscribeMessage(Map<String,String> headerMap,
+                   String fromAddress,
+                   int queryId,
+                   String serviceName,
+                   String myCallbackAddress)
+                   : super(headerMap,
+                           fromAddress,
+                           queryId,
+                           "channel:",
+                           "subscribe")
+  {
+    _serviceName = serviceName;
+    _myCallbackAddress = myCallbackAddress;
+  }
+
+  @override
+  void serializeImpl(List list)
+  {
+    list.add("query");
+    list.add(_headerMap);
+    list.add(_fromAddress);
+    list.add(_queryId);
+    list.add(_toAddress);
+    list.add(_methodName);
+
+    // args
+    list.add(_serviceName);
+    list.add(_myCallbackAddress);
+  }
+}
+
 class ReplyMessage extends Message
 {
-  String fromAddress;
-  int queryId;
-  String methodName;
+  String _fromAddress;
+  int _queryId;
 
-  Object result;
+  Object _result;
+
+  Object get queryId => _queryId;
+  Object get result => _result;
 
   ReplyMessage(Map<String,String> headerMap,
                String fromAddress,
@@ -132,30 +171,32 @@ class ReplyMessage extends Message
                Object result)
                : super(headerMap)
   {
-    this.fromAddress = fromAddress;
-    this.queryId = queryId;
-    this.methodName = methodName;
+    _fromAddress = fromAddress;
+    _queryId = queryId;
 
-    this.result = result;
+    _result = result;
   }
 
   @override
   void serializeImpl(List list)
   {
     list.add("reply");
-    list.add(this.headerMap);
-    list.add(this.fromAddress);
-    list.add(this.queryId);
-    list.add(this.result);
+    list.add(_headerMap);
+    list.add(_fromAddress);
+    list.add(_queryId);
+    list.add(_result);
   }
 }
 
 class ErrorMessage extends Message
 {
-  String toAddress;
-  int queryId;
+  String _toAddress;
+  int _queryId;
 
-  Object result;
+  Object _result;
+
+  Object get queryId => _queryId;
+  Object get result => _result;
 
   ErrorMessage(Map<String,String> headerMap,
                String toAddress,
@@ -163,26 +204,26 @@ class ErrorMessage extends Message
                Object result)
                : super(headerMap)
   {
-    this.toAddress = toAddress;
-    this.queryId = queryId;
+    _toAddress = toAddress;
+    _queryId = queryId;
 
-    this.result = result;
+    _result = result;
   }
 
   @override
   void serializeImpl(List list)
   {
     list.add("error");
-    list.add(this.headerMap);
-    list.add(this.toAddress);
-    list.add(this.queryId);
-    list.add(this.result);
+    list.add(_headerMap);
+    list.add(_toAddress);
+    list.add(_queryId);
+    list.add(_result);
   }
 }
 
 Message unserialize(String json)
 {
-  Object obj = JSON.parse(json);
+  Object obj = JSON.decode(json);
 
   if (obj is List) {
     return unserializeList(obj as List);

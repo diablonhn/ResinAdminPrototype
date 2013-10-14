@@ -1,34 +1,104 @@
 part of jamp;
 
-class JampHttpChannel
+class HttpChannel extends BaseChannel
 {
-  String url;
-
-  int queryId = 0;
-
-  Map<int,JampRequest> requestMap = new Map();
-  Map<int,JampRequest> activeRequestMap = new Map();
-
   Timer pollTimer;
   PollStrategy pollStrategy;
 
-  JampHttpChannel(String url,
-                  {PollStrategy pollStrategy})
+  factory HttpChannel(String url)
   {
-    this.url = url;
+    if (url.startsWith("http://") || url.startsWith("https://")) {
+    }
+    else if (url.startsWith("ws://")) {
+      url = url.substring("ws://".length);
 
-    if (pollStrategy == null) {
-      pollStrategy = new ConstantPollStrategy(const Duration(milliseconds : 2000));
+      url = "http://$url";
+    }
+    else if (url.startsWith("wss://")) {
+      url = url.substring("wss://".length);
+
+      url = "https://$url";
+    }
+    else {
+      url = "http://$url";
     }
 
+    return new HttpChannel._construct(url);
+  }
+
+  HttpChannel._construct(String url) : super._construct(url)
+  {
+    this.pollStrategy = new ConstantPollStrategy(const Duration(milliseconds : 2000));
+  }
+
+  void setPollStrategy(PollStrategy strategy)
+  {
     this.pollStrategy = pollStrategy;
+  }
+
+  @override
+  void close()
+  {
+    this.pollTimer.cancel();
+  }
+
+  @override
+  void reconnect()
+  {
+    schedulePoll();
+  }
+
+  @override
+  void _submitRequest(Request request)
+  {
+    bool isBlocking = _isBlocking;
+
+    Message msg = request.msg;
+
+    HttpRequest httpRequest;
+    String data;
+
+    if (isBlocking) {
+      data = msg.serialize();
+
+      httpRequest = initRpcRequest();
+    }
+    else {
+      data = "[" + msg.serialize() + "]";
+
+      httpRequest = initPushRequest();
+    }
+
+    httpRequest.send(data);
+
+    httpRequest.onLoadEnd.listen((ProgressEvent event) {
+      if (httpRequest.status == 200) {
+        request.sent(this);
+
+        if (isBlocking) {
+          String json = httpRequest.responseText;
+
+          Message msg = unserialize(json);
+
+          onMessage(msg);
+        }
+        else {
+          schedulePoll();
+        }
+      }
+      else {
+        request.error(this, "error submitting query data: "
+                            + "${httpRequest.statusText}, "
+                            + "${httpRequest.responseText}");
+      }
+    });
   }
 
   HttpRequest initPullRequest()
   {
     HttpRequest request = new HttpRequest();
 
-    request.open("GET", url);
+    request.open("GET", _url);
 
     request.setRequestHeader("Content-Type", "x-application/jamp-poll");
 
@@ -39,7 +109,7 @@ class JampHttpChannel
   {
     HttpRequest request = new HttpRequest();
 
-    request.open("POST", url);
+    request.open("POST", _url);
 
     request.setRequestHeader("Content-Type", "x-application/jamp-push");
 
@@ -50,155 +120,45 @@ class JampHttpChannel
   {
     HttpRequest request = new HttpRequest();
 
-    request.open("POST", url);
+    request.open("POST", _url);
 
     request.setRequestHeader("Content-Type", "x-application/jamp-rpc");
 
     return request;
   }
 
-  Future<ReplyMessage> submitQuery(String serviceName,
-                                   String methodName,
-                                   {List parameters,
-                                    String fromAddress : "me",
-                                    Map<String,String> headerMap,
-                                    bool isBlocking : true})
-  {
-    int queryId = this.queryId++;
-
-    QueryMessage query = new QueryMessage(headerMap,
-                                          fromAddress,
-                                          queryId,
-                                          serviceName,
-                                          methodName,
-                                          parameters);
-
-    JampRequest<ReplyMessage> request = new JampRequest(query);
-
-    this.requestMap[queryId] = request;
-
-    submitQueryMessage(request, isBlocking);
-
-    return request.getFuture();
-  }
-
-  void submitQueryMessage(JampRequest<ReplyMessage> request, bool isBlocking)
-  {
-    print("jamp-http0");
-
-    QueryMessage msg = request.query;
-
-    String json = msg.serialize();
-
-    json = "[$json]";
-
-    HttpRequest httpRequest;
-
-    if (isBlocking) {
-      httpRequest = initPushRequest();
-    }
-    else {
-      httpRequest = initRpcRequest();
-    }
-
-    print("jamp-http1");
-
-    httpRequest.send(json);
-
-    httpRequest.onLoadEnd.listen((ProgressEvent event) {
-      print("jamp-http2: ${httpRequest.status} ${httpRequest.responseText}");
-
-      if (httpRequest.status == 200) {
-        this.activeRequestMap[request.getQueryId()] = request;
-
-        Duration newInterval
-          = this.pollStrategy.submittedMessages(1, this.activeRequestMap.length);
-
-        schedulePollTimer(newInterval);
-      }
-      else {
-        this.requestMap.remove(request.getQueryId());
-
-        request.completer.completeError("error submiting query $json: "
-                                        + "${httpRequest.statusText}, "
-                                        + "${httpRequest.responseText}");
-      }
-    });
-  }
-
   void pull()
   {
-    if (this.activeRequestMap.length == 0) {
-      return;
-    }
-
     HttpRequest httpRequest = initPullRequest();
     httpRequest.send();
 
     httpRequest.onLoadEnd.listen((ProgressEvent event) {
-      int completedCount = 0;
-
       if (httpRequest.status == 200) {
         String json = httpRequest.responseText;
 
-        List list = JSON.parse(json);
+        List list = JSON.decode(json);
 
         for (List item in list) {
-          Message message = unserializeList(item);
+          Message msg = unserializeList(item);
 
-          if (message is ReplyMessage) {
-            completedCount++;
-
-            ReplyMessage reply = message as ReplyMessage;
-
-            int queryId = reply.queryId;
-            JampRequest request = removeRequest(queryId);
-
-            if (request != null) {
-              request.completer.complete(reply);
-            }
-          }
-          else if (message is ErrorMessage) {
-            completedCount++;
-
-            ErrorMessage error = message as ErrorMessage;
-
-            int queryId = error.queryId;
-            JampRequest request = removeRequest(queryId);
-
-            if (request != null) {
-              request.completer.completeError(error);
-            }
-          }
-          else {
-            throw new Exception("unknown message type: $message");
-          }
+          onMessage(msg);
         }
       }
 
-      DateTime now = new DateTime.now();
-
-      for (JampRequest request in this.activeRequestMap.values) {
-        if (request.isExpired(now)) {
-          completedCount++;
-
-          removeRequest(request.query.queryId);
-
-          request.completer.completeError("request has timed out");
-        }
-      }
-
-      Duration newInterval
-        = this.pollStrategy.receivedMessages(completedCount,
-                                             this.activeRequestMap.length);
-
-      schedulePollTimer(newInterval);
+      schedulePoll();
     });
   }
 
-  void schedulePollTimer(Duration duration)
+  void schedulePoll()
   {
-    print("schedulePollTimer0: $duration $pollTimer ${activeRequestMap.length}");
+    if (_requestMap.length == 0 && _callbackMap.length == 0) {
+      return;
+    }
+    else if (this.pollTimer != null && this.pollTimer.isActive) {
+      return;
+    }
+
+    Duration duration = this.pollStrategy.getUpdateInterval();
 
     if (duration != null) {
       if (this.pollTimer != null) {
@@ -208,54 +168,22 @@ class JampHttpChannel
       this.pollTimer = new Timer(duration, pull);
     }
   }
-
-  JampRequest removeRequest(int queryId)
-  {
-    this.activeRequestMap.remove(queryId);
-
-    return this.requestMap.remove(queryId);
-  }
 }
 
 abstract class PollStrategy
 {
-  Duration submittedMessages(int count, int totalOutstanding);
-
-  Duration receivedMessages(int count, int outstandingRemaining);
+  Duration getUpdateInterval();
 }
 
 class ConstantPollStrategy extends PollStrategy
 {
   Duration pollInterval;
-  Duration previousInterval;
 
   ConstantPollStrategy(Duration this.pollInterval);
 
   @override
-  Duration submittedMessages(int count, int totalOutstanding)
+  Duration getUpdateInterval()
   {
-    if (this.previousInterval == null) {
-      this.previousInterval = this.pollInterval;
-
-      return this.pollInterval;
-    }
-    else {
-      return null;
-    }
-  }
-
-  @override
-  Duration receivedMessages(int count, int outstandingRemaining)
-  {
-    if (outstandingRemaining > 0) {
-      this.previousInterval = this.pollInterval;
-
-      return this.pollInterval;
-    }
-    else {
-      this.previousInterval = null;
-
-      return null;
-    }
+    return this.pollInterval;
   }
 }

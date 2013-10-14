@@ -2,21 +2,10 @@ part of jamp;
 
 abstract class Channel
 {
-  Logger _logger = new Logger("Channel");
-
-  Map<int,Request> _requestMap = new Map();
-  Map<String,Callback> _callbackMap = new Map();
-
-  int _callbackCount = 0;
-  int _queryCount = 0;
-  String _url;
-
-  Channel(String this._url);
-
   /**
-   * Creates a JAMP channel to the specificed URL.
+   * Creates a JAMP channel to the specified URL.
    */
-  static Channel createChannel(String url)
+  Channel create(String url)
   {
     if (WebSocket.supported) {
       return new WebSocketChannel(url);
@@ -26,9 +15,22 @@ abstract class Channel
     }
   }
 
+  /**
+   * true for AJAX queries to use RPC instead of polling,
+   * does not affect WebSockets.
+   */
+  set isBlocking(bool isBlocking);
+
+  /**
+   * Sets the ChannelManager for this channel.
+   */
+  set manager(ChannelManager manager);
+
   void close();
   void reconnect();
-  void submitRequest(Request request, {bool isBlocking : true});
+
+  void _submitRequest(Request request);
+  Request _removeRequest(int queryId);
 
   /**
    * Submits a message expecting a response.
@@ -36,20 +38,122 @@ abstract class Channel
    * @param serviceName
    * @param methodName
    * @param args
-   * @param fromAddress
-   * @param headerMap
-   * @param isBlocking true to submit a blocking RPC call, false to do polling
+   * @param resultObject unmarshal json result map into this object
    *
-   * @return the response from the service.
+   * @return the response from the service
    */
-  Future<ReplyMessage> query(String serviceName,
-                             String methodName,
-                             {List args,
-                              String fromAddress : "me",
-                              Map<String,String> headerMap,
-                              bool isBlocking : true})
+  Future<Object> query(String serviceName,
+                       String methodName,
+                       {List args,
+                        Object resultObject});
+
+  /**
+   * Submits a message without expecting a response.
+   *
+   * @param serviceName
+   * @param methodName
+   * @param args
+   *
+   * @return true if the message has been sent, error otherwise
+   */
+  Future<bool> send(String serviceName,
+                    String methodName,
+                    {List args});
+
+  /**
+   * Subscribes a local callback to the remote service.
+   *
+   * Steps for subscribing to a service:
+   * 1. call registerCallback() to register your object as a callback (locally)
+   * 2. call subscribe() with the callback address returned by registerCallback()
+   * 3. the service's <code>@OnSubscribe</code> method is called
+   *
+   * @param serviceName
+   * @param myCallbackAddress remote callback address for a local callback
+   * @param args
+   * @param resultObject unmarshal json result map into this object
+   */
+  Future<Object> subscribe(String serviceName,
+                           String myCallbackAddress,
+                           {List args,
+                            Object resultObject});
+
+  /**
+   * Register this object as a callback locally.
+   *
+   * @return the remote callback address for this callback object
+   */
+  Future<String> registerCallback(Object obj);
+
+  /**
+   * Removes the object at this address as local callback.
+   */
+  void removeCallback(String address);
+}
+
+abstract class BaseChannel extends Channel
+{
+  Logger _logger = new Logger("BaseChannel");
+
+  String _url;
+  int _callbackCount = 0;
+  int _queryCount = 0;
+
+  bool _isBlocking = true;
+
+  Map<int,Request> _requestMap = new Map();
+  Map<String,Callback> _callbackMap = new Map();
+
+  ChannelManager _manager;
+
+  /**
+   * true for AJAX queries to use RPC instead of polling,
+   * does not affect WebSockets.
+   */
+  @override
+  set isBlocking(bool isBlocking) => _isBlocking = isBlocking;
+
+  /**
+   * Sets the ChannelManager for this channel.
+   */
+  @override
+  set manager(ChannelManager manager) => _manager = manager;
+
+  BaseChannel._construct(String url)
   {
+    _url = url;
+
+    _manager = new BasicChannelManager(this);
+  }
+
+  /**
+   * Submits a message expecting a response.
+   *
+   * @param serviceName
+   * @param methodName
+   * @param args
+   * @param resultObject unmarshal json result map into this object
+   *
+   * @return the response from the service
+   */
+  @override
+  Future<Object> query(String serviceName,
+                       String methodName,
+                       {List args,
+                        Object resultObject})
+  {
+    if (resultObject != null
+        && (resultObject is bool
+            || resultObject is num
+            || resultObject is String
+            || resultObject is List)) {
+      throw new Exception("result object must be an object");
+    }
+
     int queryId = this._queryCount++;
+
+    String fromAddress = "me";
+    Map<String,String> headerMap = null;
 
     QueryMessage msg = new QueryMessage(headerMap,
                                         fromAddress,
@@ -58,9 +162,9 @@ abstract class Channel
                                         methodName,
                                         args);
 
-    Request request = createQueryRequest(queryId, msg);
+    Request request = createQueryRequest(queryId, msg, resultObject);
 
-    submitRequest(request, isBlocking : isBlocking);
+    _submitRequest(request);
 
     return request.getFuture();
   }
@@ -71,20 +175,17 @@ abstract class Channel
    * @param serviceName
    * @param methodName
    * @param args
-   * @param fromAddress
-   * @param headerMap
-   * @param isBlocking true to submit a blocking RPC call, false to do polling
    *
    * @return true if the message has been sent, error otherwise
    */
+  @override
   Future<bool> send(String serviceName,
                     String methodName,
-                    {List args,
-                     String fromAddress : "me",
-                     Map<String,String> headerMap,
-                     bool isBlocking : true})
+                    {List args})
   {
     int queryId = _queryCount++;
+
+    Map<String,String> headerMap = null;
 
     SendMessage msg = new SendMessage(headerMap,
                                       serviceName,
@@ -93,7 +194,7 @@ abstract class Channel
 
     Request request = createSendRequest(queryId, msg);
 
-    submitRequest(request, isBlocking : isBlocking);
+    _submitRequest(request);
 
     return request.getFuture();
   }
@@ -109,18 +210,26 @@ abstract class Channel
    * @param serviceName
    * @param myCallbackAddress remote callback address for a local callback
    * @param args
-   * @param fromAddress
-   * @param headerMap
-   * @param isBlocking
+   * @param resultObject unmarshal json result map into this object
    */
-  Future<ReplyMessage> subscribe(String serviceName,
-                                 String myCallbackAddress,
-                                 {List args,
-                                  String fromAddress : "me",
-                                  Map<String,String> headerMap,
-                                  bool isBlocking : true})
+  @override
+  Future<Object> subscribe(String serviceName,
+                           String myCallbackAddress,
+                           {List args,
+                            Object resultObject})
   {
-    int queryId = this._queryCount++;
+    if (resultObject != null
+        && (resultObject is bool
+            || resultObject is num
+            || resultObject is String
+            || resultObject is List)) {
+      throw new Exception("result object must be an object");
+    }
+
+    int queryId = _queryCount++;
+
+    Map<String,String> headerMap = null;
+    String fromAddress = "me";
 
     SubscribeMessage msg = new SubscribeMessage(headerMap,
                                                 fromAddress,
@@ -128,9 +237,9 @@ abstract class Channel
                                                 serviceName,
                                                 myCallbackAddress);
 
-    Request request = createQueryRequest(queryId, msg);
+    Request request = createQueryRequest(queryId, msg, resultObject);
 
-    submitRequest(request, isBlocking : isBlocking);
+    _submitRequest(request);
 
     return request.getFuture();
   }
@@ -140,73 +249,57 @@ abstract class Channel
    *
    * @return the remote callback address for this callback object
    */
-  Future<String> registerCallback(Callback callback)
-  {
-    Future<String> future = getCallbackAddress(callback);
-
-    return future;
-  }
-
-  /**
-   * Removes this callback from the local list of callbacks.
-   */
-  void removeCallback(Callback callback)
-  {
-    String address = null;
-
-    _callbackMap.forEach((String key, Callback cb) {
-      if (cb == callback) {
-        address = key;
-      }
-    });
-
-    if (address == null) {
-      throw new Exception("callback has not been registered: $callback");
-    }
-
-    _callbackMap.remove(address);
-  }
-
-  Future<String> getCallbackAddress(Callback cb)
+  @override
+  Future<String> registerCallback(Object obj)
   {
     String serviceName = "channel:";
     String methodName = "publishChannel";
 
     String id = "/_cb_${this._callbackCount++}";
 
-    Future<ReplyMessage> future = query(serviceName,
-                                        methodName,
-                                        args : [id]);
+    Future<String> future = query(serviceName,
+                                  methodName,
+                                  args : [id]);
 
-    Completer<String> completer = new Completer();
-
-    future.then((ReplyMessage msg) {
-      String address = msg.result as String;
-
-      _addCallback(address, cb);
-
-      completer.complete(address);
+    return future.then((String address) {
+      _addCallback(address, obj);
     });
+  }
 
-    return completer.future;
+  /**
+   * Removes this callback from the local list of callbacks.
+   */
+  @override
+  void removeCallback(String address)
+  {
+    _callbackMap.remove(address);
   }
 
   SendRequest createSendRequest(int queryId, SendMessage msg)
   {
     SendRequest request = new SendRequest(queryId, msg);
 
-    this._requestMap[queryId] = request;
+    _requestMap[queryId] = request;
 
     return request;
   }
 
-  QueryRequest createQueryRequest(int queryId, QueryMessage msg)
+  QueryRequest createQueryRequest(int queryId,
+                                  QueryMessage msg,
+                                  Object resultObject)
   {
-    QueryRequest request = new QueryRequest(queryId, msg);
+    QueryRequest request = new QueryRequest(queryId, msg, resultObject);
 
-    this._requestMap[queryId] = request;
+    _requestMap[queryId] = request;
 
     return request;
+  }
+
+  void completeRequest(Request request, Object value)
+  {
+    _requestMap.remove(request);
+
+    request.completed(this, value);
   }
 
   void _addCallback(String address, Callback cb)
@@ -241,28 +334,38 @@ abstract class Channel
       ReplyMessage reply = msg as ReplyMessage;
 
       int queryId = reply._queryId;
-      Request request = removeRequest(queryId);
+      Request request = _removeRequest(queryId);
 
-      if (request == null) {
+      if (request != null) {
+        request.completed(this, reply.result);
+      }
+      else {
         _logger.warning("cannot find request for query id: $queryId");
       }
-
-      request.completed(this, reply);
     }
     else if (msg is ErrorMessage) {
       ErrorMessage reply = msg as ErrorMessage;
 
       int queryId = reply._queryId;
-      Request request = removeRequest(queryId);
+      Request request = _removeRequest(queryId);
 
-      if (request == null) {
+      if (request != null) {
+        request.error(this, reply.result);
+      }
+      else {
         _logger.warning("cannot find request for query id: $queryId");
       }
-
-      request.error(this, reply);
     }
+/*
+    else if (msg is SendMessage) {
+
+    }
+    else if (msg is QueryMessage) {
+
+    }
+*/
     else {
-      throw new Exception("unexpected jamp message type: $msg");
+      _manager.onError(new Exception("unknown message type: $msg"));
     }
   }
 
@@ -274,22 +377,23 @@ abstract class Channel
   {
     List<Request> expiredRequestList = new List();
 
-    this._requestMap.forEach((int queryId, Request request) {
+    _requestMap.forEach((int queryId, Request request) {
       if (request.isExpired()) {
         expiredRequestList.add(request);
       }
     });
 
     for (Request request in expiredRequestList) {
-      removeRequest(request._queryId);
+      _removeRequest(request._queryId);
 
-      request.error(this, "expired request");
+      request.error(this, "request expired");
     }
   }
 
-  Request removeRequest(int queryId)
+  @override
+  Request _removeRequest(int queryId)
   {
-    return this._requestMap.remove(queryId);
+    return _requestMap.remove(queryId);
   }
 }
 
@@ -306,16 +410,21 @@ class Request<T>
           Message msg,
           {Duration timeout : const Duration(seconds : 5)})
   {
-    this._queryId = queryId;
-    this._msg = msg;
+    _queryId = queryId;
+    _msg = msg;
 
-    this._expirationTime = new DateTime.now().add(timeout);
+    _expirationTime = new DateTime.now().add(timeout);
 
-    this._completer = new Completer<T>();
+    _completer = new Completer<T>();
   }
 
   int get queryId => _queryId;
   Message get msg => _msg;
+
+  String serialize()
+  {
+    return _msg.serialize();
+  }
 
   bool isExpired([DateTime now])
   {
@@ -332,15 +441,15 @@ class Request<T>
 
   void completed(Channel channel, T value)
   {
-    if (! this._completer.isCompleted) {
-      this._completer.complete(value);
+    if (! _completer.isCompleted) {
+      _completer.complete(value);
     }
   }
 
   void error(Channel channel, Object error)
   {
-    if (! this._completer.isCompleted) {
-      this._completer.completeError(error);
+    if (! _completer.isCompleted) {
+      _completer.completeError(error);
     }
   }
 
@@ -357,23 +466,173 @@ class SendRequest extends Request<bool>
   @override
   void sent(Channel channel)
   {
-    channel.removeRequest(this._queryId);
+    channel._removeRequest(_queryId);
 
-    if (! this._completer.isCompleted) {
-      this._completer.complete(true);
+    if (! _completer.isCompleted) {
+      _completer.complete(true);
     }
   }
 }
 
-class QueryRequest extends Request<ReplyMessage>
+class QueryRequest extends Request<Object>
 {
+  Object _resultObject;
+
   QueryRequest(int queryId,
                Message msg,
+               Object resultObject,
                {Duration timeout : const Duration(seconds : 5)})
-               : super(queryId, msg, timeout : timeout);
+               : super(queryId, msg, timeout : timeout)
+  {
+    _resultObject = resultObject;
+  }
+
+  @override
+  void completed(Channel channel, Object resultValue)
+  {
+    if (_completer.isCompleted) {
+      return;
+    }
+
+    try {
+      if (_resultObject != null) {
+        if (resultValue == null) {
+          _completer.complete(null);
+
+          return;
+        }
+        if (! (resultValue is Map)) {
+          throw new Exception("cannot marshal value $resultValue"
+                              + " of type ${resultValue.runtimeType}"
+                              + " to type ${_resultObject.runtimeType}");
+        }
+
+        Map map = resultValue as Map;
+
+        M.InstanceMirror mirror = M.reflect(_resultObject);
+
+        map.forEach((String key, Object value) {
+          /*
+          // use setter for private fields
+          if (key.startsWith("_")) {
+            key = key.substring(1);
+          }
+          */
+
+          Symbol symbol = new Symbol(key);
+
+          value = marshalValue(mirror.type, symbol, value);
+
+          mirror.setField(symbol, value);
+        });
+
+        _completer.complete(_resultObject);
+      }
+      else {
+        _completer.complete(resultValue);
+      }
+    }
+    catch (e) {
+      _completer.completeError(e);
+    }
+  }
+
+  Object marshalValue(M.ClassMirror mirror, Symbol symbol, Object value)
+  {
+    /*
+    print("marshalValue1: $symbol, $value, $typeName");
+
+    Map<Symbol, M.MethodMirror> setters = mirror.setters;
+
+    M.MethodMirror method = setters[symbol];
+
+    if (method != null) {
+      List<M.ParameterMirror> paramList = method.parameters;
+      M.ParameterMirror param = paramList[0];
+
+      String typeName = param.qualifiedName.toString();
+
+      print("marshalValue1: $symbol, $value, $typeName");
+    }
+    */
+
+    return value;
+  }
+}
+
+abstract class ChannelManager
+{
+  Channel _channel;
+
+  ChannelManager(Channel channel)
+  {
+    _channel = channel;
+  }
+
+  /**
+   * Called when the channel is opened/reopened
+   */
+  void onOpen();
+
+  /**
+   * Called when the channel is closed unexpectedly
+   */
+  void onClose(Exception e);
+
+  /**
+   * Called when there is an unspecified error with the channel
+   */
+  void onError(Exception e);
+}
+
+class BasicChannelManager extends ChannelManager
+{
+  Logger _logger = new Logger("BasicChannelManager");
+
+  int _maxRetries;
+  int _reconnectIntervalMs;
+
+  int _reconnectCount = 0;
+
+  BasicChannelManager(Channel channel,
+                      {int reconnectIntervalMs : 1000 * 5,
+                       int maxRetries : 3})
+                      : super(channel)
+  {
+    _maxRetries = maxRetries;
+    _reconnectIntervalMs = reconnectIntervalMs;
+  }
+
+  @override
+  void onOpen()
+  {
+    _reconnectCount = 0;
+  }
+
+  @override
+  void onClose(Exception e)
+  {
+    scheduleReconnect();
+  }
+
+  @override
+  void onError(Exception e)
+  {
+    _logger.warning(e.toString());
+  }
+
+  void scheduleReconnect()
+  {
+    if (_reconnectCount++ < _maxRetries) {
+      Duration duration = new Duration(milliseconds: _reconnectIntervalMs);
+
+      new Timer(duration, _channel.reconnect);
+    }
+  }
 }
 
 abstract class Callback
 {
   void call(String methodName, {List args});
 }
+

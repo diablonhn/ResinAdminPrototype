@@ -2,150 +2,169 @@ part of jamp;
 
 typedef void ResponseCallback(Object result);
 
-class JampWebSocketConnection
+class WebSocketChannel extends BaseChannel
 {
   Logger _logger = new Logger("JampWebSocketConnection");
 
-  WebSocketConnection conn;
-  Map<int,JampRequest> requestMap = new Map();
-
   int queryId = 0;
 
-  JampWebSocketConnection(String uri)
+  WebSocket _socket;
+
+  bool _isClosing = false;
+
+  List<Request> _requestQueue = new List<Request>();
+
+  factory WebSocketChannel(String url)
   {
-    this.conn = new WebSocketConnection(uri, onMessage);
+    if (url.startsWith("ws://") || url.startsWith("wss://")) {
+    }
+    else if (url.startsWith("http://")) {
+      url = url.substring("http://".length);
+
+      url = "ws://$url";
+    }
+    else if (url.startsWith("https://")) {
+      url = url.substring("https://".length);
+
+      url = "wss://$url";
+    }
+    else {
+      url = "ws://$url";
+    }
+
+    return new WebSocketChannel._construct(url);
   }
 
-  void close()
+  WebSocketChannel._construct(String url) : super._construct(url)
   {
-    this.conn.close();
+    init();
   }
 
-  void reconnect()
+  void init()
   {
-    this.conn.reconnect();
-  }
+    if (_logger.isLoggable(Level.FINE)) {
+      _logger.fine("initializing websocket connection to $this.uri");
+    }
 
-  void onMessage(String json)
-  {
-    try {
+    if (_isClosing) {
+      return;
+    }
+
+    WebSocket socket = new WebSocket(_url);
+    _socket = socket;
+
+    socket.onOpen.listen((Event event) {
       if (_logger.isLoggable(Level.FINE)) {
-        _logger.fine("received jamp message $json");
+        _logger.fine("connection opened to $_url");
       }
 
-      Message msg = unserialize(json);
+      _manager.onOpen();
 
-      if (msg is ReplyMessage) {
-        ReplyMessage reply = msg as ReplyMessage;
+      submitRequestLoop();
+    });
 
-        int queryId = reply.queryId;
-        JampRequest request = requestMap.remove(queryId);
-
-        if (request == null) {
-          throw new Exception("cannot find request for query id: $queryId");
-        }
-
-        request.completer.complete(reply);
+    socket.onClose.listen((CloseEvent event) {
+      if (_logger.isLoggable(Level.FINE)) {
+        _logger.fine("connection closed to $_url");
       }
-      else if (msg is ErrorMessage) {
-        ErrorMessage reply = msg as ErrorMessage;
 
-        int queryId = reply.queryId;
-        JampRequest request = requestMap.remove(queryId);
-
-        if (request == null) {
-          throw new Exception("cannot find request for query id: $queryId");
-        }
-
-        print("nam0: $reply");
-
-        request.completer.completeError(reply);
+      if (_isClosing) {
+        return;
       }
-      else {
-        throw new Exception("unexpected jamp message type ($msg) for json: $json");
+
+      _manager.onClose(new Exception(event));
+    });
+
+    socket.onError.listen((Event event) {
+      if (_logger.isLoggable(Level.FINE)) {
+        _logger.fine("socket error from $_url");
       }
-    }
-    catch (e, stackTrace) {
-      print(e);
-      print(stackTrace);
-    }
-  }
 
-  Future<ReplyMessage> submitQuery(String serviceName,
-                                    String methodName,
-                                    {List parameters,
-                                     String fromAddress : "me",
-                                     Map<String,String> headerMap})
-  {
-    int queryId = this.queryId++;
-
-    QueryMessage query = new QueryMessage(headerMap,
-                                          fromAddress,
-                                          queryId,
-                                          serviceName,
-                                          methodName,
-                                          parameters);
-
-    JampRequest request = new JampRequest(query);
-    this.requestMap[queryId] = request;
-
-    submitMessage(query);
-
-    return request.getFuture();
-  }
-
-  void submitMessage(Message msg)
-  {
-    String json = msg.serialize();
-
-    this.conn.addRequest(json);
-  }
-
-  /**
-   * Runs periodically to prune requests that have timed out, and invoking
-   * error callbacks if applicable.
-   */
-  void checkRequests()
-  {
-    this.requestMap.forEach((int queryId, JampRequest request) {
-      if (request.isExpired()) {
-        this.requestMap.remove(queryId);
-
-        request.completer.completeError("expired request");
+      if (_isClosing) {
+        return;
       }
+
+      _manager.onError(new Exception(event));
+    });
+
+    socket.onMessage.listen((MessageEvent e) {
+      String data = e.data;
+
+      if (_logger.isLoggable(Level.FINE)) {
+        _logger.fine("received message from $_url: $data");
+      }
+
+      onMessageString(data);
     });
   }
-}
 
-class JampRequest<T>
-{
-  QueryMessage query;
-  DateTime expirationTime;
-
-  Completer<T> completer;
-
-  JampRequest(QueryMessage query,
-              {Duration timeout : const Duration(seconds : 5)})
+  @override
+  void close()
   {
-    this.query = query;
+    _isClosing = true;
 
-    this.expirationTime = new DateTime.now().add(timeout);
-
-    this.completer = new Completer<T>();
+    if (_socket.readyState == WebSocket.OPEN){
+      _socket.close();
+    }
   }
 
-  bool isExpired([DateTime now])
+  @override
+  void reconnect()
   {
-    if (now == null) {
-      now = new DateTime.now();
+    close();
+    _isClosing = false;
+
+    init();
+  }
+
+  @override
+  void _submitRequest(Request request)
+  {
+    if (_isClosing) {
+      throw new Exception("websocket is closing");
     }
 
-    return now.isAfter(this.expirationTime);
+    _requestQueue.add(request);
+
+    if (_socket.readyState == WebSocket.OPEN) {
+      submitRequestLoop();
+    }
   }
 
-  int getQueryId() => this.query.queryId;
+  @override
+  Request _removeRequest(int queryId)
+  {
+    super._removeRequest(queryId);
 
-  Future<T> getFuture() => this.completer.future;
+    for (int i = 0; i < _requestQueue.length; i++) {
+      Request request = _requestQueue[i];
+
+      if (request.queryId == queryId) {
+        _requestQueue.remove(i);
+
+        break;
+      }
+    }
+  }
+
+  void submitRequestLoop()
+  {
+    while (_socket.readyState == WebSocket.OPEN
+           && _requestQueue.length > 0) {
+      Request request = _requestQueue[0];
+      String json = request.serialize();
+
+      if (_logger.isLoggable(Level.FINE)) {
+        _logger.fine("sending data to $this.uri: $json");
+      }
+
+      _socket.send(json);
+
+      _requestQueue.removeAt(0);
+
+      request.sent(this);
+    }
+  }
 }
 
 class WebSocketConnection
@@ -172,7 +191,6 @@ class WebSocketConnection
                       bool this.isReconnectOnError : true,
                       int this.reconnectIntervalMs : 5000})
   {
-    init();
   }
 
   void init()
@@ -212,7 +230,7 @@ class WebSocketConnection
   {
     while (this.socket.readyState == WebSocket.OPEN
            && this.requestQueue.length > 0) {
-      String data = this.requestQueue.elementAt(0);
+      String data = this.requestQueue[0];
 
       if (_logger.isLoggable(Level.FINE)) {
         _logger.fine("sending data to $this.uri: $data");
