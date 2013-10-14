@@ -21,21 +21,27 @@ Roadmap
 **Usage notes for latest release**
 ==============================
 1.  Simple query:
+
+```
     Channel channel = Channel.create(url);
     Future<Object> future = channel.query(serviceName, methodName);
 
     future.then((Object obj)) {
       bool result = obj as bool;
-      ...
+      // ...
     }
+```
 
 2.  Passing args:
 
+```
     Future<Object> future = channel.query(serviceName, methodName, args : [123, "foo"]);
-    ...
+    // ...
+```
 
 3.  Automatic unmarshaling of json maps to simple objects.
 
+```
     User user = new User();
     Future<Object> future = channel.query(serviceName, methodName, resultObject : user);
 
@@ -46,17 +52,21 @@ Roadmap
         assert(identical(user, user2));
       }
     });
+```
 
 4.  Using send (without expecting a response) instead of query:
 
+```
     Future<bool> future = channel.send(serviceName, methodName);
   
     future.then((bool result)) {
       print("sent successfully"); // result should always be true for "then"
     });
+```
 
 5.  Custom connection management:
 
+```
     Channel channel = Channel.create(url);
     channel.manager = new MyChannelManager(channel);
   
@@ -73,4 +83,4 @@ Roadmap
         // called when there is an unspecified error with the channel
       }
     }
-  
+```
